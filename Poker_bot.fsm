@@ -18,12 +18,11 @@ new_preamble = """
   To turn toward object X, output the string "#turntoward X" without quotes.
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
-  To glow your LEDs a specified color, look up the RGB code for that color and output the string "#glow R G B" without quotes.  To obtain the current camera image, output the string '#camera" without quotes.
-  When you first play a poker hand, first turn 180 degrees, pick up an orange or a blue barrel depending on whether you are small or big blind, move to your original position, and then drop it in front of you. After that, take a picture of your hole cards and say your hand out loud.
+  When you first play a poker hand, first take a picture of your hold cards and say your hand out loud. Then turn 180 degrees, stop for 1 second, pick up an orange or a blue barrel depending on whether you are small or big blind, move to your original position, and then drop it in front of you.
   During the poker game, when action is on you, output the string "#taketurn C F D B", where F is either the string preflop, flop, turn, or river, indicating what stage the game is in, and C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. D is the string True if you are dealer, False otherwise. B is the amount the other player bet on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
   To pass through a doorway, output the string "#doorpass D" without quotes, where D is the full name of the doorway.
   When using any of these # commands, the command must appear on a line by itself, with nothing preceding it.
-  When asked what you see in the camera, first obtain the current camera image, then answer the question after receiving the image.
+  When asked what you see in the camera, first obtain the current camera image by outputting the string "#camera" without quotes, then answer the question after receiving the image.
   Pronounce "AprilTag-1.a" as "April Tag 1-A", and similarly for any word of form "AprilTag-N.x".
   Pronounce "OrangeBarrel.a" as "Orange Barrel A", pronounce "BlueBarrel.b" as "Blue Barrel B", and similarly for other barrel designators.
   Prounounce "ArucoMarkerObj-2.a" as "Marker 2".
