@@ -1,0 +1,19 @@
+from aim_fsm import *
+
+class TakeTurn(StateNode):
+  def __init__(self, hole=None, state='preflop', dealer, prev_action):
+    self.hole = hole
+    self.state = state
+    self.dealer = dealer #Boolean if we are dealer
+    self.prev_action = prev_action #Int of amount bet by other player in previous action, 0 if it was checked
+    super().__init__()
+
+  def start(self, event=None):
+    super().start(event)
+
+  class BetOrCheck(AskGPTCamera):
+    # In order for checking to be a valid option, we need to either be first to act
+    # or the opponent checked to us
+    # So we should keep track of both our own position and the previous action, if applicable
+
+
