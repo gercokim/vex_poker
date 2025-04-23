@@ -18,9 +18,9 @@ new_preamble = """
   To turn toward object X, output the string "#turntoward X" without quotes.
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
-  When you first play a poker hand, first take a picture of your hold cards and say your hand out loud. Then turn 180 degrees, stop for 1 second, pick up an orange or a blue barrel depending on whether you are small or big blind, move to your original position, and then drop it in front of you.
-  After the start of each betting round - preflop, flop, turn, or river, state who starts betting first. If you are first to act on preflop betting round, choose to call, raise, or fold based on your hole card hand strength. If you are next to act on a betting round, the other player will tell you what they did, so respond accordingly. At the start of the betting rounds after preflop, first take a picture to see what cards have been dealt out, and then begin the betting. At the start of the turn betting round, move sideways -120 before taking a picture.
-  At the start of every single betting round after preflop, announce the best 5 card hand that you have created. Additionally, at showdown, after the opponent reveals its hand, announce the opponents best 5 card hand, and then compare who wins.
+  When you first play a poker hand, first take a picture of your hole cards and say your hand out loud.
+  During the poker game, when action is on you, output the string "#taketurn C F D B", where F is either the string preflop, flop, turn, or river, indicating what stage the game is in, and C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. D is the string True if you are dealer, False otherwise. B is the amount the other player bet on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
+  When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
   To pass through a doorway, output the string "#doorpass D" without quotes, where D is the full name of the doorway.
   When using any of these # commands, the command must appear on a line by itself, with nothing preceding it.
   When asked what you see in the camera, first obtain the current camera image by outputting the string "#camera" without quotes, then answer the question after receiving the image.
@@ -114,6 +114,39 @@ class Poker_bot(StateMachineProgram):
                 self.args = (vex.LightType.ALL, vex.Color.TRANSPARENT)
             super().start(event)
 
+    class CmdTakeTurn(AskGPT):
+      def start(self, event):
+        print(event.data)
+        spec = event.data.split(' ')
+        self.hole = spec[1]
+        self.state = spec[2]
+        self.dealer = (spec[3] == 'True')
+        self.prev_action = int(spec[4])
+        prev_action = "checked" if not self.prev_action else f"bet {self.prev_action}"
+        if (not self.dealer and not self.prev_action) or (self.dealer and self.state == 'preflop'):
+          action_txt = "You are first to act."
+        else:
+          action_txt = f"The other player {prev_action}."
+        self.query_text = f"The betting round is {self.state}. Your cards are {self.hole}. State how much the pot is"
+        self.query_text += action_txt
+        if self.state == 'preflop':
+          self.query_text += " Choose your action."
+        elif self.state == 'flop':
+          self.query_text += f" Take a picture of the {self.state}, list the 5 cards that the best 5-card hand that you make, and then choose your action."
+        else:
+          self.query_text += f"Move sideways -60, then take a picture of the {self.state}, list the 5 cards that the best 5-card hand that you make, and choose your action. "
+        print(self.query_text)
+        super().start(event)
+
+    class CmdPlaySound(PlaySoundFile):
+      def start(self, event):
+        spec = event.data.split(' ')
+        if spec[1] == 'W':
+          self.filepath = 'cha-ching-7053.mp3'
+        else:
+          self.filepath = '8-bit-video-game-lose-sound-version-1-145828.mp3'
+        super().start(event)
+
     class SpeakResponse(Say):
       def start(self,event):
         self.text = event.data
@@ -143,6 +176,8 @@ class Poker_bot(StateMachineProgram):
       dispatch =D(re.compile('#glow '))=> self.CmdGlow() =CNext=> dispatch
       dispatch =D(re.compile('#camera$'))=> self.CmdSendCamera() =C=>
         AskGPT("Please respond to the query using the camera image.") =OpenAITrans()=> check
+      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurn() =OpenAITrans()=> check
+      dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
       dispatch =D()=> Print() =Next=> dispatch
       dispatch =C=> loop
 
