@@ -12,7 +12,6 @@ new_preamble = """
   Calling implies matching the opponent's bet, so when calculating the pot size when you call, only add the difference between the opponent's bet and your initial bet if it exists. When checking, do not add anything to the pot.
   You will be dealer in this match.
   The dealer posts the small blind, and will act first in preflop for every hand. In the betting rounds after that, the opponent will act first.
-  In the preflop round, assume that the small blind and big blinds have already been posted.
   Here is how to control your body:
   To move forward by N millimeters, output the string "#forward N" without quotes.
   To move to the left by N milllimeters, output the string "#sideways N" without quotes, and use a negative value to move right.
@@ -21,7 +20,7 @@ new_preamble = """
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
   When you first play a poker hand, first state your stack size, then take a picture of your hole cards and say your hand out loud.
-  During the poker game, when told to take your turn, output the string "#taketurn C F D B", where F is either the string preflop, flop, turn, or river, indicating what stage the game is in, and C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. D is the string True if you are dealer, False otherwise. B is the amount the other player bet on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round. For preflop specifically, this will be 2 because the opponent posts his big blind.
+  During the poker game, when told to take your action, output the string "#taketurn C F D B", where F is either the string preflop, flop, turn, or river, indicating what stage the game is in, and C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. D is the string True if you are dealer, False otherwise. B is the amount the other player bet on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
   At showdown, after the opponent tells you their cards, list the 5 cards that the opponent's best 5 card hand makes, and determine who wins the pot.
   When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
   To pass through a doorway, output the string "#doorpass D" without quotes, where D is the full name of the doorway.
