@@ -18,8 +18,9 @@ new_preamble = """
   To turn toward object X, output the string "#turntoward X" without quotes.
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
-  When you first play a poker hand, first take a picture of your hole cards and say your hand out loud.
+  When you first play a poker hand, first state your stack size, then take a picture of your hole cards and say your hand out loud.
   During the poker game, when action is on you, output the string "#taketurn C F D B", where F is either the string preflop, flop, turn, or river, indicating what stage the game is in, and C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. D is the string True if you are dealer, False otherwise. B is the amount the other player bet on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
+  At showdown, after the opponent tells you their cards, list the 5 cards that the opponent's best 5 card hand makes, and determine who wins the pot.
   When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
   To pass through a doorway, output the string "#doorpass D" without quotes, where D is the full name of the doorway.
   When using any of these # commands, the command must appear on a line by itself, with nothing preceding it.
@@ -123,11 +124,11 @@ class Poker_bot(StateMachineProgram):
         self.dealer = (spec[3] == 'True')
         self.prev_action = int(spec[4])
         prev_action = "checked" if not self.prev_action else f"bet {self.prev_action}"
-        if (not self.dealer and not self.prev_action) or (self.dealer and self.state == 'preflop'):
+        if (not self.dealer and not self.prev_action) or (self.dealer and self.state == 'preflop' and not self.prev_action):
           action_txt = "You are first to act."
         else:
           action_txt = f"The other player {prev_action}."
-        self.query_text = f"The betting round is {self.state}. Your cards are {self.hole}. State how much the pot is"
+        self.query_text = f"The betting round is {self.state}. Your cards are {self.hole}. State how much the pot is and how much you have left in your stack."
         self.query_text += action_txt
         if self.state == 'preflop':
           self.query_text += " Choose your action."
@@ -135,6 +136,7 @@ class Poker_bot(StateMachineProgram):
           self.query_text += f" Take a picture of the {self.state}, list the 5 cards that the best 5-card hand that you make, and then choose your action."
         else:
           self.query_text += f"Move sideways -60, then take a picture of the {self.state}, list the 5 cards that the best 5-card hand that you make, and choose your action. "
+        #self.query_text += "When betting, turn around 180 degrees, move forward 1, and pick up the barrels corresponding to the bet size, return to your original position, and drop the barrel. Repeat this until your bet is complete."
         print(self.query_text)
         super().start(event)
 
