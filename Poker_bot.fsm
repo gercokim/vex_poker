@@ -1,4 +1,5 @@
 from aim_fsm import *
+from Pot_manager import *
 
 new_preamble = """
   You are an intelligent poker playing robot named Celeste.
@@ -6,12 +7,13 @@ new_preamble = """
   You have three omnidirectional wheels and a forward-facing camera.
   Here is the setup for the poker game:
   You are playing heads up against a human player. This is a no limit hold'em match.
-  The blinds are $1/$2. Blue barrels are $1, and orange barrels are $2.
+  The blinds are $1/$2. Orange barrels are $1, and blue barrels are $2.
   Each player has a starting stack of $20. When betting, only use bet sizes of $2, half pot rounded down to the nearest whole number, or all in.
   When raising, only raise all in. Your chips will be placed behind you.
-  Calling implies matching the opponent's bet, so when calculating the pot size when you call, only add the difference between the opponent's bet and your initial bet if it exists. When checking, do not add anything to the pot.
   You will be dealer in this match.
-  The dealer posts the small blind, and will act first in preflop for every hand. In the betting rounds after that, the opponent will act first.
+  During the poker game, when taking your action, output the string "#taketurn C F D B" without quotes, where C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. F is either the string preflop, flop, turn, or river, indicating what stage the game is in. D is the string True if you are dealer, False otherwise. B is the amount the other player bet      on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
+  The dealer posts the small blind, and will act first in preflop for every hand. When acting, do not say anything before outputting the appropriate #taketurn string. In the betting rounds after that, the opponent will act first.
+  In preflop, you can only call.
   Here is how to control your body:
   To move forward by N millimeters, output the string "#forward N" without quotes.
   To move to the left by N milllimeters, output the string "#sideways N" without quotes, and use a negative value to move right.
@@ -20,8 +22,9 @@ new_preamble = """
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
   When you first play a poker hand, first state your stack size, then take a picture of your hole cards and say your hand out loud.
-  During the poker game, when told to take your action, output the string "#taketurn C F D B", where F is either the string preflop, flop, turn, or river, indicating what stage the game is in, and C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. D is the string True if you are dealer, False otherwise. B is the amount the other player bet on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
+  When updating the pot, output the string "#updatepot A B S P" without quotes, where A is the string action bet, check, call,  raise, or fold, B is the amount that was bet or called, which is 0 if the action is check or fold, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
   At showdown, after the opponent tells you their cards, list the 5 cards that the opponent's best 5 card hand makes, and determine who wins the pot.
+  After showdown is finished, output the string "#resetpot " without quotes.
   When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
   To pass through a doorway, output the string "#doorpass D" without quotes, where D is the full name of the doorway.
   When using any of these # commands, the command must appear on a line by itself, with nothing preceding it.
@@ -36,7 +39,7 @@ new_preamble = """
   Do not include any formatting in your output, such as asterisks or LaTex commands.  Just use plain text.
 """
 pot_size = 3
-
+Pot = Pot_Manager()
 class Poker_bot(StateMachineProgram):
 
     class CheckResponse(StateNode):
@@ -119,9 +122,8 @@ class Poker_bot(StateMachineProgram):
 
     class CmdTakeTurn(AskGPT):
       def start(self, event):
-        global pot_size
         print(event.data)
-        print(pot_size)
+        print(Pot.pot)
         spec = event.data.split(' ')
         self.hole = spec[1]
         self.state = spec[2]
@@ -132,7 +134,7 @@ class Poker_bot(StateMachineProgram):
           action_txt = "You are first to act."
         else:
           action_txt = f"The other player {prev_action}."
-        self.query_text = f"The betting round is {self.state}. Your cards are {self.hole}. State the pot size and how much you have left in your stack."
+        self.query_text = f"The betting round is {self.state}. Your cards are {self.hole}. State the pot size, which is {Pot.pot} and how much you have left in your stack, which is {Pot.stack_size}."
         self.query_text += action_txt
         if self.state == 'preflop':
           self.query_text += " Decide your betting action."
@@ -144,6 +146,25 @@ class Poker_bot(StateMachineProgram):
         self.query_text += "Do not output another #taketurn command."
         print(self.query_text)
         super().start(event)
+
+    class CmdUpdatePot(Say):
+      def start(self, event):
+        spec = event.data.split(' ')
+        print('updating pot')
+        action = spec[1]
+        bet = int(spec[2])
+        state = spec[3]
+        player = int(spec[4])
+        Pot.update_pot(action, bet, state, player)
+        self.text = f"The pot is now ${Pot.pot}."
+        super().start(event)
+
+    class CmdResetPot(Say):
+      def start(self, event):
+        Pot.reset_pot()
+        self.text = f"The pot will reset to $3 to start the next hand."
+        super().start(event)
+
 
     class CmdPlaySound(PlaySoundFile):
       def start(self, event):
@@ -185,6 +206,8 @@ class Poker_bot(StateMachineProgram):
         AskGPT("Please respond to the query using the camera image.") =OpenAITrans()=> check
       dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurn() =OpenAITrans()=> check
       dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
+      dispatch =D(re.compile('#updatepot '))=> self.CmdUpdatePot() =CNext=> dispatch
+      dispatch =D(re.compile('#resetpot '))=> self.CmdResetPot() =CNext=> dispatch
       dispatch =D()=> Print() =Next=> dispatch
       dispatch =C=> loop
 
