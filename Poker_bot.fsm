@@ -8,12 +8,13 @@ new_preamble = """
   Here is the setup for the poker game:
   You are playing heads up against a human player. This is a no limit hold'em match.
   The blinds are $1/$2. Orange barrels are $1, and blue barrels are $2.
-  Each player has a starting stack of $20. When betting, only use bet sizes of $2, half pot rounded down to the nearest whole number, or all in.
+  Each player has a starting stack of $20. When betting, the minimum bet size is $2, and the bet size must be be a whole number.
   When raising, only raise all in. Your chips will be placed behind you.
-  You will be dealer in this match.
+  You will be dealer first. Every hand, the dealer will alternate between the opposing player and you.
+  When asked who is dealer, output the string "#dealer D" without quotes.
+  When first prompted to play a poker hand, output the string "#starthand D" without quotes.
   During the poker game, when taking your action, output the string "#taketurn C F D B" without quotes, where C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. F is either the string preflop, flop, turn, or river, indicating what stage the game is in. D is the string True if you are dealer, False otherwise. B is the amount the other player bet      on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
   The dealer posts the small blind, and will act first in preflop for every hand. When acting, do not say anything before outputting the appropriate #taketurn string. In the betting rounds after that, the opponent will act first.
-  In preflop, you can only call.
   Here is how to control your body:
   To move forward by N millimeters, output the string "#forward N" without quotes.
   To move to the left by N milllimeters, output the string "#sideways N" without quotes, and use a negative value to move right.
@@ -98,7 +99,6 @@ class Poker_bot(StateMachineProgram):
 
     class CmdSendCamera(SendGPTCamera):
         def start(self,event):
-            print(event.data)
             super().start(event)
 
     class CmdSay(Say):
@@ -180,6 +180,27 @@ class Poker_bot(StateMachineProgram):
         self.text = event.data
         super().start(event)
 
+    class GetBlind(StateNode):
+      def __init__(self, dealer=True):
+        self.dealer = dealer
+        self.turn = -90 if self.dealer else 90
+        self.barrel = "OrangeBarrel.a" if self.dealer else "BlueBarrel.a"
+        self.post_statement = "Posting small blind" if self.dealer else "Posting big blind"
+        super().__init__()
+
+      def start(self, event=None):
+        self.target_pose = self.robot.pose
+        super().start(event)
+
+      class PilotToOrigin(PilotToPose):
+        def start(self, event=None):
+          self.target_pose = self.parent.target_pose
+          super().start(event)
+
+      $setup{
+        Turn(self.turn) =CNext=> Say(self.post_statement) =CNext=> PickUp(self.barrel) =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
+      }
+
     def start(self):
         self.robot.openai_client.set_preamble(new_preamble)
         super().start()
@@ -208,8 +229,14 @@ class Poker_bot(StateMachineProgram):
       dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
       dispatch =D(re.compile('#updatepot '))=> self.CmdUpdatePot() =CNext=> dispatch
       dispatch =D(re.compile('#resetpot '))=> self.CmdResetPot() =CNext=> dispatch
+      dispatch =D(re.compile('#dealer '))=> Forward(1) =CNext=> AskGPT("Are you dealer? Respond only with a yes or no in all caps") =OpenAITrans()=> dealer
+      dispatch =D(re.compile('#starthand '))=> Turn(90) =CNext=> Say("Looking at $2 chips") =CNext=> Turn(-180) =CNext=> Say("Looking at $1 chips") =CNext=> Turn(90) =CNext=> self.CmdSendCamera() =C=> AskGPT("What are my hole cards?") =OpenAITrans()=> self.CheckResponse() =D=> self.SpeakResponse() =CNext=> dealer
       dispatch =D()=> Print() =Next=> dispatch
       dispatch =C=> loop
+
+      dealer: self.CheckResponse()
+      dealer =D(re.compile('YES'))=> self.GetBlind(True)
+      dealer =D(re.compile('NO'))=> Turn(90) =CNext=> Say("Posting big blind") =CNext=> PickUp("BlueBarrel.a")
 
       turntoward: self.CmdTurnToward()
       turntoward =CNext=> dispatch
