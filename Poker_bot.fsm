@@ -149,6 +149,7 @@ class Poker_bot(StateMachineProgram):
 
     class CmdTakeTurnV2(StateNode):
       def start(self, event):
+        print("starting the turn")
         spec = event.data.split(' ')
         self.hole = spec[1]
         self.state = spec[2]
@@ -166,8 +167,8 @@ class Poker_bot(StateMachineProgram):
           self.query_text += " Decide your betting action."
         else:
           self.query_text += f" Now that you have seen the {self.state}, say the 5 cards of the best 5-card hand that you make, and then choose your action."
-            if self.state != 'flop':
-              self.sideways = -60
+          if self.state != 'flop':
+            self.sideways = -60
         self.target_pose = self.robot.pose
 
       class DecideAction(AskGPT):
@@ -210,7 +211,7 @@ class Poker_bot(StateMachineProgram):
           super().start(event)
 
       class SendUpdatedBet(StateNode):
-        def start(self, event=None)
+        def start(self, event=None):
           super().start(event)
           self.parent.bet -= 2
           self.post_data(self.parent.bet)
@@ -309,7 +310,8 @@ class Poker_bot(StateMachineProgram):
       dispatch =D(re.compile('#glow '))=> self.CmdGlow() =CNext=> dispatch
       dispatch =D(re.compile('#camera$'))=> self.CmdSendCamera() =C=>
         AskGPT("Please respond to the query using the camera image.") =OpenAITrans()=> check
-      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurn() =OpenAITrans()=> check
+      #dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurn() =OpenAITrans()=> check
+      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV2() =CNext=> check
       dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
       dispatch =D(re.compile('#updatepot '))=> self.CmdUpdatePot() =CNext=> dispatch
       dispatch =D(re.compile('#resetpot '))=> self.CmdResetPot() =CNext=> dispatch
