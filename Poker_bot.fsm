@@ -195,7 +195,7 @@ class Poker_bot(StateMachineProgram):
         def start(self, event):
           print(event.data)
           super().start(event)
-          self.parent.bet = int(event.data)
+          self.parent.bet = int(event.response)
           # For now, we use this - we need to otherwise keep track of the number of each barrel we have, and then
           # use the remaining barrels to determine how much of each to use
           self.parent.blue_chips = bet // 2
@@ -215,8 +215,13 @@ class Poker_bot(StateMachineProgram):
           self.parent.bet -= 2
           self.post_data(self.parent.bet)
 
+      class SayGPTResp(Say):
+        def start(self, event):
+          self.text = event.response
+          super().start(event)
+
       $setup{
-        self.MoveStreet() =CNext=> self.SeeStreet() =CNext=> self.DecideAction() =OpenAITrans()=> self.parent.CheckResponse() =D=> self.parent.SpeakResponse() =C=> AskGPT("What was the amount that you bet? Output only the number, and output 0 if you checked") =OpenAITrans()=> self.parent.CheckResponse() =D=> self.BetChips() =D=> dispatch
+        self.MoveStreet() =CNext=> self.SeeStreet() =CNext=> self.DecideAction() =OpenAITrans()=> self.SayGPTResp() =C=> AskGPT("What was the amount that you bet? Output only the number, and output 0 if you checked") =OpenAITrans()=> self.BetChips() =D=> dispatch
 
         dispatch: Iterate()
         dispatch =D(0)=> ParentCompletes()
