@@ -23,7 +23,7 @@ new_preamble = """
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
   When you first play a poker hand, first state your stack size, then take a picture of your hole cards and say your hand out loud.
-  When a player states an action to bet, check, or others, output the string "#updatepot A B S P" without quotes, where A is the string action bet, check, call,  raise, or fold, B is the amount that was bet or called, which is 0 if the action is check or fold, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
+  After a player states their action to bet, check, or others, output the string "#updatepot A B S P" without quotes, where A is the string action bet, check, call,  raise, or fold, B is the amount that was bet or called, which is 0 if the action is check or fold, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
   At showdown, after the opponent tells you their cards, list the 5 cards that the opponent's best 5 card hand makes, and determine who wins the pot.
   After showdown is finished, output the string "#resetpot " without quotes.
   When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
@@ -147,8 +147,8 @@ class Poker_bot(StateMachineProgram):
         print(self.query_text)
         super().start(event)
 
-    class CmdTakeTurnV2(StateNode):
-      def start(self, event):
+    class CmdTakeTurnV(StateNode):
+      def start(self, event=None):
         print("starting the turn")
         spec = event.data.split(' ')
         self.hole = spec[1]
@@ -159,7 +159,7 @@ class Poker_bot(StateMachineProgram):
         if (not self.dealer and not self.prev_action) or (self.dealer and self.state == 'preflop' and not self.prev_action):
           action_txt = "You are first to act."
         else:
-          action_txt = f"The other player {prev_action}"
+          action_txt = f"The other player {prev_action}. "
         self.query_text = f"The betting round is {self.state}. Your cards are {self.hole}. State the pot size, which is {Pot.pot} and how much you have left in your stack, which is {Pot.stack_size}."
         self.query_text += action_txt
         self.sideways = 0
@@ -170,21 +170,26 @@ class Poker_bot(StateMachineProgram):
           if self.state != 'flop':
             self.sideways = -60
         self.target_pose = self.robot.pose
+        super().start(event)
 
       class DecideAction(AskGPT):
         def start(self, event):
+          print("deciding action")
           self.parent.target_pose = self.robot.pose
           self.query_text = self.parent.query_text
+          print(self.query_text)
           super().start(event)
 
       class MoveStreet(Sideways):
         def start(self, event):
+          print("moving street")
           self.distance_mm = float(self.parent.sideways)
           super().start(event)
 
       class SeeStreet(StateNode):
         def start(self, event=None):
           super().start(event)
+          print("seeing street")
           if self.parent.state != 'preflop':
             self.parent.robot.send_gpt_camera(instruction=None)
           self.post_completion()
@@ -194,13 +199,15 @@ class Poker_bot(StateMachineProgram):
         # In our fsm, after DecideAction is announced by SpeakResponse, use an AskGPT node to
         # determine what the bet was, which we can send as a dataevent to this node
         def start(self, event):
-          print(event.data)
+          print(event.response)
+          print("betting chips")
           super().start(event)
-          self.parent.bet = int(event.response)
+          self.parent.bet = event.response
+          print(self.parent.bet)
           # For now, we use this - we need to otherwise keep track of the number of each barrel we have, and then
           # use the remaining barrels to determine how much of each to use
-          self.parent.blue_chips = bet // 2
-          self.parent.orange_chips = bet % 2
+          #self.parent.blue_chips = bet // 2
+          #self.parent.orange_chips = bet % 2
           # Iterate through the number of chips, we can use an infinite iterate, since we can't directly encode the
           # number of iterates at the start - so we use blue_chips to keep track
           self.post_data(self.parent.bet)
@@ -213,7 +220,7 @@ class Poker_bot(StateMachineProgram):
       class SendUpdatedBet(StateNode):
         def start(self, event=None):
           super().start(event)
-          self.parent.bet -= 2
+          self.parent.bet = str(int(self.parent.bet) - 2)
           self.post_data(self.parent.bet)
 
       class SayGPTResp(Say):
@@ -222,12 +229,12 @@ class Poker_bot(StateMachineProgram):
           super().start(event)
 
       $setup{
-        self.MoveStreet() =CNext=> self.SeeStreet() =CNext=> self.DecideAction() =OpenAITrans()=> self.SayGPTResp() =C=> AskGPT("What was the amount that you bet? Output only the number, and output 0 if you checked") =OpenAITrans()=> self.BetChips() =D=> dispatch
+        self.MoveStreet() =CNext=> self.SeeStreet() =CNext=> self.DecideAction() =OpenAITrans()=> self.SayGPTResp() =C=> AskGPT("What was the amount that you bet? Output only the number, and output 0 if you checked") =OpenAITrans()=> self.BetChips() =D()=> bet
 
-        dispatch: Iterate()
-        dispatch =D(0)=> ParentCompletes()
-        dispatch =D(1)=> Turn(-90) =CNext=> Say("Placing bet") =CNext=> PickUp("OrangeBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
-        dispatch =D=> Turn(90) =CNext=> Say("Placing bet") =CNext=> PickUp("BlueBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> self.SendUpdatedBet() =D=> dispatch
+        bet: Iterate()
+        bet =D(re.compile('0'))=> ParentCompletes()
+        bet =D(re.compile('1'))=> Turn(-90) =CNext=> Say("Placing bet") =CNext=> PickUp("OrangeBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
+        bet =D()=> Turn(90) =CNext=> Say("Placing bet") =CNext=> PickUp("BlueBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> self.SendUpdatedBet() =D=> bet
       }
 
 
@@ -310,8 +317,7 @@ class Poker_bot(StateMachineProgram):
       dispatch =D(re.compile('#glow '))=> self.CmdGlow() =CNext=> dispatch
       dispatch =D(re.compile('#camera$'))=> self.CmdSendCamera() =C=>
         AskGPT("Please respond to the query using the camera image.") =OpenAITrans()=> check
-      #dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurn() =OpenAITrans()=> check
-      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV2() =CNext=> check
+      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV() =CNext=> dispatch
       dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
       dispatch =D(re.compile('#updatepot '))=> self.CmdUpdatePot() =CNext=> dispatch
       dispatch =D(re.compile('#resetpot '))=> self.CmdResetPot() =CNext=> dispatch
