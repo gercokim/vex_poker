@@ -11,9 +11,8 @@ new_preamble = """
   Each player has a starting stack of $20. When betting, the minimum bet size is $2, and the bet size must be be a whole number.
   When raising, only raise all in. Your chips will be placed behind you.
   You will be dealer first. Every hand, the dealer will alternate between the opposing player and you.
-  When asked who is dealer, output the string "#dealer D" without quotes.
   When first prompted to play a poker hand, output the string "#starthand D" without quotes.
-  During the poker game, when taking your action, output the string "#taketurn C F D B" without quotes, where C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. F is either the string preflop, flop, turn, or river, indicating what stage the game is in. D is the string True if you are dealer, False otherwise. B is the amount the other player bet      on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
+  During the poker game, if you are first to act in the betting round or after the other player has taken their action, output the string "#taketurn C F D B" without quotes, where C is a string containing your hole cards. They should be formatted as rank suit rank suit without spaces. So for example, if your hand is 6 of clubs and 7 or hearts, C will be 6c7h. F is either the string preflop, flop, turn, or river, indicating what stage the game is in. D is the string True if you are dealer, False otherwise. B is the amount the other player bet      on the previous action - this will be 0 if the previous action was check or if you are first to act in the betting round.
   The dealer posts the small blind, and will act first in preflop for every hand. When acting, do not say anything before outputting the appropriate #taketurn string. In the betting rounds after that, the opponent will act first.
   Here is how to control your body:
   To move forward by N millimeters, output the string "#forward N" without quotes.
@@ -23,7 +22,7 @@ new_preamble = """
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
   When you first play a poker hand, first state your stack size, then take a picture of your hole cards and say your hand out loud.
-  After a player states their action to bet, check, or others, output the string "#updatepot A B S P" without quotes, where A is the string action bet, check, call,  raise, or fold, B is the amount that was bet or called, which is 0 if the action is check or fold, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
+  When the opposing player states their action to bet, check, or others, output the string "#updatepot A B S P" without quotes, where A is the string action bet, check, call,  raise, or fold, B is the amount that was bet or called, which is 0 if the action is check or fold, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
   At showdown, after the opponent tells you their cards, list the 5 cards that the opponent's best 5 card hand makes, and determine who wins the pot.
   After showdown is finished, output the string "#resetpot " without quotes.
   When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
@@ -164,11 +163,12 @@ class Poker_bot(StateMachineProgram):
         self.query_text += action_txt
         self.sideways = 0
         if self.state == 'preflop':
-          self.query_text += " Decide your betting action."
+          self.query_text += " Decide your betting action to call, fold, or check. Check is only an option if you are not dealer."
         else:
-          self.query_text += f" Now that you have seen the {self.state}, say the 5 cards of the best 5-card hand that you make, and then choose your action."
+          self.query_text += f" Now that you have seen the {self.state}, say the 5 cards of the best 5-card hand that you make, and then choose your betting action."
           if self.state != 'flop':
             self.sideways = -60
+        self.query_text += "Do not output any # command strings."
         self.target_pose = self.robot.pose
         super().start(event)
 
@@ -202,15 +202,17 @@ class Poker_bot(StateMachineProgram):
           print(event.response)
           print("betting chips")
           super().start(event)
-          self.parent.bet = event.response
+          spec = event.response.split(' ')
+          self.parent.bet = spec[1]
+          action = spec[0]
+          state = spec[2]
+          Pot.update_pot(action, self.parent.bet, state, 1)
           print(self.parent.bet)
-          # For now, we use this - we need to otherwise keep track of the number of each barrel we have, and then
-          # use the remaining barrels to determine how much of each to use
-          #self.parent.blue_chips = bet // 2
-          #self.parent.orange_chips = bet % 2
-          # Iterate through the number of chips, we can use an infinite iterate, since we can't directly encode the
-          # number of iterates at the start - so we use blue_chips to keep track
-          self.post_data(self.parent.bet)
+          if state == 'preflop' and action == 'call':
+            self.post_data('1')
+          else:
+            self.post_data(self.parent.bet)
+
 
       class PilotToOrigin(PilotToPose):
         def start(self, event=None):
@@ -228,13 +230,32 @@ class Poker_bot(StateMachineProgram):
           self.text = event.response
           super().start(event)
 
+      class BarrelPickUp(PickUp):
+        def __init__(self, barrel):
+          self.barrel = OrangeBarrelObj if barrel == 'OrangeBarrel' else BlueBarrelObj
+          super().__init__()
+
+        def start(self, event):
+          min_d = 10000
+          min_obj = None
+          for obj in self.robot.world_map.objects.values():
+            if isinstance(obj, self.barrel) and obj.is_visible:
+              pose_diff = self.robot.pose - obj.pose
+              distance = (pose_diff.x**2 + pose_diff.y**2)**0.5
+              if distance <= min_d:
+                min_d = distance
+                min_obj = obj
+          self.object_spec = min_obj
+          super().start(event)
+
+
       $setup{
-        self.MoveStreet() =CNext=> self.SeeStreet() =CNext=> self.DecideAction() =OpenAITrans()=> self.SayGPTResp() =C=> AskGPT("What was the amount that you bet? Output only the number, and output 0 if you checked") =OpenAITrans()=> self.BetChips() =D()=> bet
+        self.MoveStreet() =CNext=> self.SeeStreet() =CNext=> self.DecideAction() =OpenAITrans()=> self.SayGPTResp() =C=> AskGPT("Output the string 'A B S', where A is the action that you chose, i.e. call, bet, check, etc, B is the amount that you bet or called, this should be 0 if you checked or folded, and S is the betting round, so preflop, flop, turn, or river.") =OpenAITrans()=> self.BetChips() =D()=> bet
 
         bet: Iterate()
         bet =D(re.compile('0'))=> ParentCompletes()
-        bet =D(re.compile('1'))=> Turn(-90) =CNext=> Say("Placing bet") =CNext=> PickUp("OrangeBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
-        bet =D()=> Turn(90) =CNext=> Say("Placing bet") =CNext=> PickUp("BlueBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> self.SendUpdatedBet() =D=> bet
+        bet =D(re.compile('1'))=> Turn(-90) =CNext=> Say("Placing bet") =CNext=> self.BarrelPickUp("OrangeBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
+        bet =D()=> Turn(90) =CNext=> Say("Placing bet") =CNext=> self.BarrelPickUp("BlueBarrel") =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> self.SendUpdatedBet() =D=> bet
       }
 
 
@@ -276,7 +297,7 @@ class Poker_bot(StateMachineProgram):
       def __init__(self, dealer=True):
         self.dealer = dealer
         self.turn = -90 if self.dealer else 90
-        self.barrel = "OrangeBarrel.a" if self.dealer else "BlueBarrel.a"
+        self.barrel = OrangeBarrelObj if self.dealer else BlueBarrelObj
         self.post_statement = "Posting small blind" if self.dealer else "Posting big blind"
         super().__init__()
 
@@ -289,8 +310,23 @@ class Poker_bot(StateMachineProgram):
           self.target_pose = self.parent.target_pose
           super().start(event)
 
+      class BarrelPickUp(PickUp):
+        def start(self, event):
+          min_d = 10000
+          min_obj = None
+          for obj in self.robot.world_map.objects.values():
+            if isinstance(obj, self.parent.barrel) and obj.is_visible:
+              pose_diff = self.robot.pose - obj.pose
+              distance = (pose_diff.x**2 + pose_diff.y**2)**0.5
+              if distance <= min_d:
+                min_d = distance
+                min_obj = obj
+          self.object_spec = min_obj
+          super().start(event)
+
+
       $setup{
-        Turn(self.turn) =CNext=> Say(self.post_statement) =CNext=> PickUp(self.barrel) =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
+        Turn(self.turn) =CNext=> Say(self.post_statement) =CNext=> self.BarrelPickUp(self.barrel) =CNext=> self.PilotToOrigin() =CNext=> Drop() =CNext=> ParentCompletes()
       }
 
     def start(self):
@@ -317,17 +353,17 @@ class Poker_bot(StateMachineProgram):
       dispatch =D(re.compile('#glow '))=> self.CmdGlow() =CNext=> dispatch
       dispatch =D(re.compile('#camera$'))=> self.CmdSendCamera() =C=>
         AskGPT("Please respond to the query using the camera image.") =OpenAITrans()=> check
-      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV() =CNext=> dispatch
+      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV() =CNext=> AskGPT("If the hand has gone to showdown, play the approriate sound. If not, do not do anything.") =OpenAITrans()=> check
       dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
       dispatch =D(re.compile('#updatepot '))=> self.CmdUpdatePot() =CNext=> dispatch
       dispatch =D(re.compile('#resetpot '))=> self.CmdResetPot() =CNext=> dispatch
       dispatch =D(re.compile('#dealer '))=> Forward(1) =CNext=> AskGPT("Are you dealer? Respond only with a yes or no in all caps") =OpenAITrans()=> dealer
-      dispatch =D(re.compile('#starthand '))=> Turn(90) =CNext=> Say("Looking at $2 chips") =CNext=> Turn(-180) =CNext=> Say("Looking at $1 chips") =CNext=> Turn(90) =CNext=> self.CmdSendCamera() =C=> AskGPT("What are my hole cards?") =OpenAITrans()=> self.CheckResponse() =D=> self.SpeakResponse() =CNext=> AskGPT("Are you dealer? Respond only with a yes or no in all caps") =OpenAITrans()=> dealer
+      dispatch =D(re.compile('#starthand '))=> self.CmdSendCamera() =C=> AskGPT("What are your hole cards?") =OpenAITrans()=> self.CheckResponse() =D=> self.SpeakResponse() =CNext=> AskGPT("Are you dealer? Respond only with a yes or no in all caps") =OpenAITrans()=> dealer
       dispatch =D()=> Print() =Next=> dispatch
       dispatch =C=> loop
 
       dealer: self.CheckResponse()
-      dealer =D(re.compile('YES'))=> self.PostBlind(True) =CNext=> dispatch
+      dealer =D(re.compile('YES'))=> self.PostBlind(True) =CNext=> AskGPT("Now its your turn to act in preflop") =OpenAITrans()=> check
       dealer =D(re.compile('NO'))=> self.PostBlind(False) =CNext=> dispatch
 
       turntoward: self.CmdTurnToward()
