@@ -22,7 +22,9 @@ new_preamble = """
   To pick up object X, output the string "#pickup X" without quotes.
   To drop an object, output the string "#drop" without quotes.
   When you first play a poker hand, first state your stack size, then take a picture of your hole cards and say your hand out loud.
-  When the opposing player states their action to bet, check, or others, output the string "#updatepot A B S P" without quotes, where A is the string action bet, check, call,  raise, or fold, B is the amount that was bet or called, which is 0 if the action is check or fold, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
+  When the opposing player states their action is to bet or call, output the string "#updatepot A B S P" without quotes, where A is the string action bet, call,raise, B is the amount that was bet or called, and S is the string of the current betting round, so preflop, flop, turn, or river. P is the player that did the action - it will be 1 if it was you, 0 if it was the other opponent. We update the pot after any player decides on an action.
+  Do not output #updatepot if the opposing player player checked.
+  If an #updatepot command is output, make sure to also output the corresponding #taketurn command.
   At showdown, after the opponent tells you their cards, list the 5 cards that the opponent's best 5 card hand makes, and determine who wins the pot.
   After showdown is finished, output the string "#resetpot " without quotes.
   When you win a pot, output the string "#playsound W", if you fold or lose a post, output the string "#playsound L".
@@ -141,7 +143,6 @@ class Poker_bot(StateMachineProgram):
           self.query_text += f" Take a picture of the {self.state}, list the 5 cards that the best 5-card hand that you make, and then choose your action."
         else:
           self.query_text += f"Move sideways -60, then take a picture of the {self.state}, say the 5 cards of the best 5-card hand that you make, and decide your betting action. "
-        #self.query_text += "When betting, turn around 180 degrees, move forward 1, and pick up the barrels corresponding to the bet size, return to your original position, and drop the barrel. Repeat this until your bet is complete."
         self.query_text += "Do not output another #taketurn command."
         print(self.query_text)
         super().start(event)
@@ -165,7 +166,7 @@ class Poker_bot(StateMachineProgram):
         if self.state == 'preflop':
           self.query_text += " Decide your betting action to call, fold, or check. Check is only an option if you are not dealer."
         else:
-          self.query_text += f" Now that you have seen the {self.state}, say the 5 cards of the best 5-card hand that you make, and then choose your betting action."
+          self.query_text += f" Now that you have seen the {self.state}, say the 5 cards of the best 5-card hand that you make, and then choose your betting action. If you have a strong hand, choose an aggressive betting action."
           if self.state != 'flop':
             self.sideways = -60
         self.query_text += "Do not output any # command strings."
@@ -206,7 +207,7 @@ class Poker_bot(StateMachineProgram):
           self.parent.bet = spec[1]
           action = spec[0]
           state = spec[2]
-          Pot.update_pot(action, self.parent.bet, state, 1)
+          Pot.update_pot(action, int(self.parent.bet), state, 1)
           print(self.parent.bet)
           if state == 'preflop' and action == 'call':
             self.post_data('1')
@@ -353,7 +354,7 @@ class Poker_bot(StateMachineProgram):
       dispatch =D(re.compile('#glow '))=> self.CmdGlow() =CNext=> dispatch
       dispatch =D(re.compile('#camera$'))=> self.CmdSendCamera() =C=>
         AskGPT("Please respond to the query using the camera image.") =OpenAITrans()=> check
-      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV() =CNext=> AskGPT("If the hand has gone to showdown, play the approriate sound. If not, do not do anything.") =OpenAITrans()=> check
+      dispatch =D(re.compile('#taketurn '))=> self.CmdTakeTurnV() =CNext=> AskGPT("If either player has folded, say who wins the pot and play the approriate sound. Otherwise, say what should happen next in the hand.") =OpenAITrans()=> check
       dispatch =D(re.compile('#playsound '))=> self.CmdPlaySound('') =CNext=> dispatch
       dispatch =D(re.compile('#updatepot '))=> self.CmdUpdatePot() =CNext=> dispatch
       dispatch =D(re.compile('#resetpot '))=> self.CmdResetPot() =CNext=> dispatch
@@ -363,7 +364,7 @@ class Poker_bot(StateMachineProgram):
       dispatch =C=> loop
 
       dealer: self.CheckResponse()
-      dealer =D(re.compile('YES'))=> self.PostBlind(True) =CNext=> AskGPT("Now its your turn to act in preflop") =OpenAITrans()=> check
+      dealer =D(re.compile('YES'))=> self.PostBlind(True) =CNext=> AskGPT("You are first to act in preflop") =OpenAITrans()=> check
       dealer =D(re.compile('NO'))=> self.PostBlind(False) =CNext=> dispatch
 
       turntoward: self.CmdTurnToward()
