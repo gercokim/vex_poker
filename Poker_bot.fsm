@@ -188,11 +188,32 @@ class Poker_bot(StateMachineProgram):
 
       class SeeStreet(StateNode):
         def start(self, event=None):
-          super().start(event)
-          print("seeing street")
-          if self.parent.state != 'preflop':
-            self.parent.robot.send_gpt_camera(instruction=None)
-          self.post_completion()
+            super().start(event)
+            print("seeing street")
+            if self.parent.state != 'preflop':
+                self.parent.robot.send_gpt_camera(instruction=None)
+            if self.parent.state == 'flop':
+                comments = [
+                    "Oh wow—this is going to be fun!",
+                    "Good luck to you!",
+                    "Looks like someone's got a playable hand."
+                ]
+            elif self.parent.state == 'turn':
+                comments = [
+                    "Here comes the turn—things are heating up!",
+                    "Don’t blink, this could change everything."
+                ]
+            elif self.parent.state == 'river':
+                comments = [
+                    "It’s the river—don’t be nervous!",
+                    "This is for all the marbles!",
+                    "Let’s see what fate deals us."
+                ]
+            else:
+                comments = []
+            if comments:
+                self.parent.robot.say(random.choice(comments))
+            self.post_completion()
 
       class BetChips(StateNode):
         # Ways to determine how much the bot bet
