@@ -1,5 +1,6 @@
 from aim_fsm import *
 from Pot_manager import *
+import random
 
 new_preamble = """
   You are an intelligent poker playing robot named Celeste.
